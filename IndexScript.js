@@ -4264,7 +4264,42 @@ function openProfileModal() {
   document.getElementById('profile-dists').textContent  = '-';
   document.getElementById('profile-reads').textContent  = '-';
   document.getElementById('profile-name-input').value   = u.name || '';
+  loadMySignaturePreview();
   getModal('profileModal').show();
+}
+
+async function loadMySignaturePreview() {
+  const img   = document.getElementById('profile-signature-preview');
+  const empty = document.getElementById('profile-signature-empty');
+  try {
+    const res = await gasCall('apiGetMySignature');
+    if (res && res.signatureUrl) {
+      img.src = res.signatureUrl; img.style.display = 'inline-block'; empty.style.display = 'none';
+    } else {
+      img.style.display = 'none'; empty.style.display = 'inline';
+    }
+  } catch(e) { img.style.display = 'none'; empty.style.display = 'inline'; }
+}
+
+async function uploadSignature(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (!/^image\/(png|jpe?g)$/.test(file.type)) { toast('Format harus PNG atau JPG', 'warning'); return; }
+  if (file.size > 2 * 1024 * 1024) { toast('Ukuran file maksimal 2MB', 'warning'); return; }
+  showLoader();
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload  = () => resolve(r.result.split(',')[1]);
+      r.onerror = () => reject(new Error('Gagal membaca file'));
+      r.readAsDataURL(file);
+    });
+    const res = await gasCall('apiUploadSignature', base64, file.type);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast('Tanda tangan berhasil disimpan', 'success');
+    loadMySignaturePreview();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); input.value = ''; }
 }
 
 async function saveProfile() {
@@ -4865,7 +4900,7 @@ async function showDocDetail(docId, showAck) {
             <div class="fw-bold mb-2" style="color:var(--primary)"><i class="bi bi-arrow-clockwise me-1"></i>Revision History</div>
               <div class="table-responsive">
                 <table class="table table-sm mb-0">
-                  <thead><tr><th>Old Rev</th><th>New Rev</th><th>Reason</th><th>Description</th><th>File</th><th>By</th><th>Date</th></tr></thead>
+                  <thead><tr><th>Old Rev</th><th>New Rev</th><th>Reason</th><th>Description</th><th>File</th><th>By</th><th>Date</th><th>Redline</th></tr></thead>
                   <tbody>${(history.revisions||[]).map(r => `<tr>
                     <td><span class="badge bg-secondary">${r.old_revision||'-'}</span></td>
                     <td><span class="badge bg-primary">${r.new_revision||'-'}</span></td>
@@ -4874,6 +4909,7 @@ async function showDocDetail(docId, showAck) {
                     <td>${r.file_url ? `<a href="${r.file_url}" target="_blank" class="btn btn-xs btn-outline-primary" style="font-size:11px;padding:2px 8px"><i class="bi bi-file-earmark me-1"></i>${r.file_name||'File'}</a>` : '-'}</td>
                     <td>${r.updated_by||'-'}</td>
                     <td>${fmtDate(r.updated_at)}</td>
+                    <td><button class="btn btn-xs btn-outline-info" style="font-size:11px;padding:2px 8px" onclick="openRedlineModal('${r.id}')"><i class="bi bi-file-diff"></i> Compare</button></td>
                   </tr>`).join('')}</tbody>
                 </table>
               </div>
@@ -4890,6 +4926,63 @@ async function showDocDetail(docId, showAck) {
     getModal('docDetailModal').show();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
   finally { hideLoader(); }
+}
+
+// ============================================================
+// VERSION COMPARE / REDLINE
+// ============================================================
+async function openRedlineModal(revisionId) {
+  showLoader();
+  try {
+    const res = await gasCall('apiCompareRevision', revisionId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    renderRedline(res.data);
+    getModal('redlineModal').show();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+function renderRedline(data) {
+  document.getElementById('redline-rev-label').textContent = `${data.old_revision || '-'} \u2192 ${data.new_revision || '-'}`;
+  const rows = (data.fields || []).map(f => `
+    <div class="redline-field ${f.changed ? 'changed' : ''}">
+      <div class="redline-field-label">${f.label}${!f.changed ? ' <span class="text-muted" style="font-weight:400;font-size:11px">(tidak berubah)</span>' : ''}</div>
+      ${f.changed ? `<div class="redline-diff">${diffWords(f.oldValue, f.newValue)}</div>` : ''}
+    </div>`).join('');
+  document.getElementById('redline-body').innerHTML = `
+    <div class="mb-2 text-muted" style="font-size:12.5px"><strong>Alasan:</strong> ${data.reason || '-'} — ${data.change_description || ''}</div>
+    ${data.pending ? '<div class="alert alert-warning py-2" style="font-size:12.5px">Revisi ini masih dalam proses (belum Effective) — dibandingkan dengan draft saat ini.</div>' : ''}
+    ${rows || '<div class="text-muted">Tidak ada field kategori untuk dibandingkan.</div>'}`;
+}
+
+// Word-level diff sederhana (algoritma LCS) untuk highlight redline
+function diffWords(oldText, newText) {
+  const a = (oldText || '').split(/(\s+)/);
+  const b = (newText || '').split(/(\s+)/);
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  let i = 0, j = 0; const out = [];
+  while (i < m && j < n) {
+    if (a[i] === b[j]) { out.push({ t: a[i], type: 'same' }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: a[i], type: 'del' }); i++; }
+    else { out.push({ t: b[j], type: 'ins' }); j++; }
+  }
+  while (i < m) { out.push({ t: a[i], type: 'del' }); i++; }
+  while (j < n) { out.push({ t: b[j], type: 'ins' }); j++; }
+  return out.map(w =>
+    w.type === 'del' ? `<del class="redline-del">${escapeHtml(w.t)}</del>` :
+    w.type === 'ins' ? `<ins class="redline-ins">${escapeHtml(w.t)}</ins>` :
+    escapeHtml(w.t)
+  ).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 function renderFieldValueForPdfPreview_(f, customValues) {
