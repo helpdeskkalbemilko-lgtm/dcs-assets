@@ -2611,11 +2611,11 @@ async function loadReadAck() {
 }
 
 function handleAcknowledgeClick() {
-  if (App.currentDocHasQuiz) {
-    openQuizModal(App.currentDocId);
-  } else {
-    acknowledgeRead();
+  if (!App.currentDocHasQuiz) {
+    toast('Dokumen ini belum memiliki Quiz Compliance. Hubungi Document Control Admin.', 'warning');
+    return;
   }
+  openQuizModal(App.currentDocId);
 }
 
 async function openQuizModal(docId) {
@@ -2673,12 +2673,12 @@ async function submitQuizAnswers() {
 }
 
 // ---- Quiz management (admin/owner) ----
-async function openQuizManageModal(docId) {
+async function openQuizManageModal(categoryCode) {
   showLoader();
   try {
-    const res = await gasCall('apiGetDocumentQuiz', docId);
+    const res = await gasCall('apiGetCategoryQuiz', categoryCode);
     if (res && res.error) { toast(res.error, 'error'); return; }
-    App.quizEditDocId = docId;
+    App.quizEditCategoryCode = categoryCode;
     App.quizEditData = (res.data || []).map(q => ({...q}));
     renderQuizManageList();
     getModal('quizManageModal').show();
@@ -2727,7 +2727,7 @@ function updateQuizField(idx, field, value) {
 async function saveQuizQuestions() {
   showLoader();
   try {
-    const res = await gasCall('apiSaveDocumentQuiz', App.quizEditDocId, App.quizEditData || []);
+    const res = await gasCall('apiSaveCategoryQuiz', App.quizEditCategoryCode, App.quizEditData || []);
     if (res && res.error) { toast(res.error, 'error'); return; }
     toast(res.message, 'success');
     getModal('quizManageModal').hide();
@@ -3229,7 +3229,8 @@ function renderMasterTable(type, data) {
         const manageFieldBtn = isStd
           ? `<button class="btn btn-xs btn-outline-primary" style="font-size:11px;padding:2px 8px" onclick="openCategoryFieldManager('${item.id}','${(item.name||'').replace(/'/g,"\\'")}')"><i class="bi bi-ui-checks"></i></button>`
           : '';
-        return `<tr><td>${item.code||'-'}</td><td>${item.name||'-'}</td><td>${item.description||'-'}</td><td>${formTypeBadge}</td><td>${actions(item)}${manageFieldBtn}</td></tr>`;
+        const manageQuizBtn = `<button class="btn btn-xs btn-outline-success" style="font-size:11px;padding:2px 8px" title="Kelola Quiz Compliance" onclick="openQuizManageModal('${item.code}')"><i class="bi bi-patch-question"></i></button>`;
+        return `<tr><td>${item.code||'-'}</td><td>${item.name||'-'}</td><td>${item.description||'-'}</td><td>${formTypeBadge}</td><td>${actions(item)}${manageFieldBtn}${manageQuizBtn}</td></tr>`;
       }
       case 'department':
         const cgList = item.circle_groups ? item.circle_groups.split(',').map(c => `<span class="badge bg-info me-1">${c.trim()}</span>`).join('') : '<span class="text-muted">-</span>';
@@ -5049,9 +5050,7 @@ async function showDocDetail(docId, showAck) {
     ackBtn.style.display = showAck ? 'block' : 'none';
     ackBtn.innerHTML = App.currentDocHasQuiz
       ? '<i class="bi bi-patch-question me-1"></i>Mulai Quiz Compliance'
-      : '<i class="bi bi-check2-circle me-1"></i>I Have Read';
-    const manageBtn = document.getElementById('btn-manage-quiz');
-    if (manageBtn) manageBtn.style.display = (!showAck && checkMenuAccess('document_register','edit')) ? 'inline-block' : 'none';
+      : '<i class="bi bi-exclamation-triangle me-1"></i>Quiz Belum Tersedia';
     const pdfBtn = document.getElementById('btn-export-pdf');
     // SUPER_ADMIN tetap bisa export PDF walau status belum Effective (untuk cek hasil export)
     if (pdfBtn) pdfBtn.style.display = (doc.status === 'Effective' || App.user.role === 'SUPER_ADMIN') ? 'inline-block' : 'none';
