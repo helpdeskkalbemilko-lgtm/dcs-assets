@@ -1,12 +1,10 @@
-<script>
-
 // ============================================================
 // APP STATE
 // ============================================================
 const App = {
   currentPage: 'dashboard',
-  token: <?!= safeJson_(sessionToken) ?>,
-  user: { email: <?!= safeJson_(userEmail) ?>, name: <?!= safeJson_(userName) ?>, role: <?!= safeJson_(userRole) ?>, department: <?!= safeJson_(userDepartment) ?>, circle_group: <?!= safeJson_(userCircleGroup) ?> },
+  token: window.APP_BOOTSTRAP.token,
+  user: window.APP_BOOTSTRAP.user,
   data: {
     docs: [],
     categories: [],
@@ -5338,7 +5336,7 @@ async function saveLoginSettings() {
 }
 
 function previewLogin() {
-  const url = '<?!= ScriptApp.getService().getUrl() ?>';
+  const url = window.APP_BOOTSTRAP.url;
   if (!url) { toast('URL deployment tidak tersedia', 'warning'); return; }
   window.open(url + '?preview=login', '_blank');
 }
@@ -5361,7 +5359,7 @@ async function downloadSourceCode() {
           okText: 'Buka Editor', cancelText: 'Tutup', type: 'warning'
         }).then(ok => {
           if (ok) {
-            var scriptId = '<?!= ScriptApp.getScriptId() ?>';
+            var scriptId = window.APP_BOOTSTRAP.scriptId;
             window.open('https://script.google.com/d/' + scriptId + '/edit', '_blank');
           }
         });
@@ -5713,4 +5711,3 @@ async function rejectRegister(userId, userEmail) {
   } catch(e) { toast('Error: ' + e.message, 'error'); }
   finally { hideLoader(); }
 }
-</script>
