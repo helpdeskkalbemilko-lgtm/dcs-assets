@@ -5091,10 +5091,10 @@ function redirectToLogin() {
   try { localStorage.removeItem('dcs_token'); } catch(e) {}
   google.script.run
     .withSuccessHandler(function(appUrl) {
-      window.location.href = appUrl || window.location.href.split('?')[0];
+      window.top.location.href = appUrl || window.top.location.href.split('?')[0];
     })
     .withFailureHandler(function() {
-      window.location.href = window.location.href.split('?')[0];
+      window.top.location.href = window.top.location.href.split('?')[0];
     })
     .apiGetAppUrl();
 }
