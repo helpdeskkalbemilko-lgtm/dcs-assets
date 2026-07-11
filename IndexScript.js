@@ -1173,6 +1173,28 @@ function renderRichTextEditor_(key, existingVal) {
     </div>`;
 }
 
+function renderRichBlocksHtml_(raw) {
+  const blocks = parseRichBlocksClient_(raw);
+  return blocks.map(b => {
+    if (b.type === 'image') {
+      return (b.items || []).map(img => `
+        <div style="margin:8px 0;text-align:center">
+          <img src="${driveThumbUrl_(img.file_id)}" style="max-width:100%;border:1px solid #ddd">
+          ${img.caption ? `<div style="font-size:11px;color:#666;font-style:italic;margin-top:4px">${img.caption}</div>` : ''}
+        </div>`).join('');
+    }
+    if (b.type === 'table') {
+      const cols = b.cols || [];
+      const rows = b.rows && b.rows.length ? b.rows : [cols.map(() => '-')];
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0">
+        <thead><tr>${cols.map(c => `<th style="border:1px solid #ccc;background:#f0f0f0;padding:4px">${c}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${cols.map((c, ci) => `<td style="border:1px solid #ccc;padding:4px">${r[ci] || '-'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>`;
+    }
+    return `<div>${(b.content || '').replace(/\n/g, '<br>')}</div>`;
+  }).join('');
+}
+
 function rtRenderBlocks(key) {
   const container = document.getElementById(`rt-blocks-${key}`);
   if (!container) return;
@@ -2630,12 +2652,16 @@ async function openQuizModal(docId) {
     const body = document.getElementById('quiz-body');
     body.innerHTML = questions.map((q, idx) => `
       <div class="mb-3 p-3 border rounded">
-        <div class="fw-semibold mb-2">${idx + 1}. ${q.question}</div>
-        ${['a','b','c','d'].map(opt => q['option_' + opt] ? `
-          <div class="form-check">
-            <input class="form-check-input" type="radio" name="quiz-q-${q.id}" id="quiz-${q.id}-${opt}" value="${opt.toUpperCase()}">
-            <label class="form-check-label" for="quiz-${q.id}-${opt}">${q['option_' + opt]}</label>
-          </div>` : '').join('')}
+        <div class="fw-semibold mb-2">${idx + 1}. ${renderRichBlocksHtml_(q.question)}</div>
+        ${q.answer_type === 'text' ? `
+          <input type="text" class="form-control" id="quiz-answer-${q.id}" placeholder="Ketik jawaban Anda">
+        ` : `
+          ${['a','b','c','d'].map(opt => q['option_' + opt] ? `
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="quiz-q-${q.id}" id="quiz-${q.id}-${opt}" value="${opt.toUpperCase()}">
+              <label class="form-check-label" for="quiz-${q.id}-${opt}">${q['option_' + opt]}</label>
+            </div>` : '').join('')}
+        `}
       </div>`).join('');
     document.getElementById('quiz-result-msg').textContent = '';
     getModal('docDetailModal').hide();
@@ -2649,8 +2675,14 @@ async function submitQuizAnswers() {
   const answers = {};
   let unanswered = 0;
   questions.forEach(q => {
-    const picked = document.querySelector(`input[name="quiz-q-${q.id}"]:checked`);
-    if (picked) answers[q.id] = picked.value; else unanswered++;
+    if (q.answer_type === 'text') {
+      const input = document.getElementById(`quiz-answer-${q.id}`);
+      const val = input ? input.value.trim() : '';
+      if (val) answers[q.id] = val; else unanswered++;
+    } else {
+      const picked = document.querySelector(`input[name="quiz-q-${q.id}"]:checked`);
+      if (picked) answers[q.id] = picked.value; else unanswered++;
+    }
   });
   if (unanswered > 0) { toast('Jawab semua soal terlebih dahulu (' + unanswered + ' belum dijawab)', 'warning'); return; }
 
@@ -2679,7 +2711,8 @@ async function openQuizManageModal(categoryCode) {
     const res = await gasCall('apiGetCategoryQuiz', categoryCode);
     if (res && res.error) { toast(res.error, 'error'); return; }
     App.quizEditCategoryCode = categoryCode;
-    App.quizEditData = (res.data || []).map(q => ({...q}));
+    App.richBlocks = App.richBlocks || {};
+    App.quizEditData = (res.data || []).map(q => ({ ...q, _localKey: q.id || ('new_' + Date.now() + '_' + Math.floor(Math.random()*10000)) }));
     renderQuizManageList();
     getModal('quizManageModal').show();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
@@ -2689,33 +2722,66 @@ async function openQuizManageModal(categoryCode) {
 function renderQuizManageList() {
   const list = document.getElementById('quiz-manage-list');
   const data = App.quizEditData || [];
-  list.innerHTML = data.map((q, i) => `
-    <div class="border rounded p-3 mb-2" data-qidx="${i}">
+  list.innerHTML = data.map((q, i) => {
+    const rtKey = 'quiz-' + q._localKey;
+    const isText = q.answer_type === 'text';
+    return `
+    <div class="border rounded p-3 mb-3">
       <div class="d-flex justify-content-between mb-2">
         <strong>Soal ${i + 1}</strong>
         <button class="btn btn-sm btn-outline-danger" onclick="removeQuizQuestionRow(${i})"><i class="bi bi-trash"></i></button>
       </div>
-      <input class="form-control form-control-sm mb-2" placeholder="Pertanyaan" value="${q.question||''}" onchange="updateQuizField(${i},'question',this.value)">
-      <div class="row g-2">
-        ${['a','b','c','d'].map(opt => `
-          <div class="col-6">
-            <input class="form-control form-control-sm" placeholder="Opsi ${opt.toUpperCase()}" value="${q['option_'+opt]||''}" onchange="updateQuizField(${i},'option_${opt}',this.value)">
-          </div>`).join('')}
-      </div>
-      <select class="form-select form-select-sm mt-2" style="max-width:200px" onchange="updateQuizField(${i},'correct_option',this.value)">
-        <option value="">-- Jawaban Benar --</option>
-        ${['A','B','C','D'].map(o => `<option value="${o}" ${q.correct_option===o?'selected':''}>${o}</option>`).join('')}
+
+      <label class="form-label small fw-semibold">Pertanyaan</label>
+      ${renderRichTextEditor_(rtKey, q.question)}
+
+      <label class="form-label small fw-semibold mt-2">Tipe Jawaban</label>
+      <select class="form-select form-select-sm mb-2" style="max-width:220px" onchange="updateQuizAnswerType(${i}, this.value)">
+        <option value="choice" ${!isText ? 'selected' : ''}>Pilihan Ganda</option>
+        <option value="text" ${isText ? 'selected' : ''}>Isian Bebas</option>
       </select>
-    </div>`).join('') || '<p class="text-muted">Belum ada soal. Klik "Tambah Soal".</p>';
+
+      ${isText ? `
+        <input class="form-control form-control-sm" placeholder="Jawaban benar (kata kunci singkat)"
+          value="${q.correct_answer_text||''}" onchange="updateQuizField(${i},'correct_answer_text',this.value)">
+        <div class="form-text">Jawaban user akan dicocokkan otomatis (tidak case-sensitive). Gunakan kata kunci singkat, bukan kalimat panjang.</div>
+      ` : `
+        <div class="row g-2">
+          ${['a','b','c','d'].map(opt => `
+            <div class="col-6">
+              <input class="form-control form-control-sm" placeholder="Opsi ${opt.toUpperCase()}" value="${q['option_'+opt]||''}" onchange="updateQuizField(${i},'option_${opt}',this.value)">
+            </div>`).join('')}
+        </div>
+        <select class="form-select form-select-sm mt-2" style="max-width:200px" onchange="updateQuizField(${i},'correct_option',this.value)">
+          <option value="">-- Jawaban Benar --</option>
+          ${['A','B','C','D'].map(o => `<option value="${o}" ${q.correct_option===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      `}
+    </div>`;
+  }).join('') || '<p class="text-muted">Belum ada soal. Klik "Tambah Soal".</p>';
+
+  // Render isi blok rich text setelah HTML ter-attach ke DOM
+  data.forEach(q => rtRenderBlocks('quiz-' + q._localKey));
+}
+
+function updateQuizAnswerType(idx, value) {
+  App.quizEditData[idx].answer_type = value;
+  renderQuizManageList(); // re-render supaya input berubah sesuai tipe
 }
 
 function addQuizQuestionRow() {
   App.quizEditData = App.quizEditData || [];
-  App.quizEditData.push({ question:'', option_a:'', option_b:'', option_c:'', option_d:'', correct_option:'' });
+  const localKey = 'new_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+  App.quizEditData.push({
+    _localKey: localKey, question: '', answer_type: 'choice',
+    option_a: '', option_b: '', option_c: '', option_d: '', correct_option: '', correct_answer_text: ''
+  });
   renderQuizManageList();
 }
 
 function removeQuizQuestionRow(idx) {
+  const q = App.quizEditData[idx];
+  if (q && App.richBlocks) delete App.richBlocks['quiz-' + q._localKey];
   App.quizEditData.splice(idx, 1);
   renderQuizManageList();
 }
@@ -2725,9 +2791,18 @@ function updateQuizField(idx, field, value) {
 }
 
 async function saveQuizQuestions() {
+  // Sinkronkan isi rich text editor tiap soal ke App.quizEditData sebelum kirim
+  (App.quizEditData || []).forEach(q => {
+    const key = 'quiz-' + q._localKey;
+    rtSync(key);
+    const hidden = document.getElementById('cf-' + key);
+    q.question = hidden ? hidden.value : q.question;
+  });
+
   showLoader();
   try {
-    const res = await gasCall('apiSaveCategoryQuiz', App.quizEditCategoryCode, App.quizEditData || []);
+    const payload = (App.quizEditData || []).map(({_localKey, ...rest}) => rest);
+    const res = await gasCall('apiSaveCategoryQuiz', App.quizEditCategoryCode, payload);
     if (res && res.error) { toast(res.error, 'error'); return; }
     toast(res.message, 'success');
     getModal('quizManageModal').hide();
