@@ -2610,6 +2610,131 @@ async function loadReadAck() {
   }
 }
 
+function handleAcknowledgeClick() {
+  if (App.currentDocHasQuiz) {
+    openQuizModal(App.currentDocId);
+  } else {
+    acknowledgeRead();
+  }
+}
+
+async function openQuizModal(docId) {
+  showLoader();
+  try {
+    const res = await gasCall('apiGetQuizForAck', docId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    const questions = res.data || [];
+    if (!questions.length) { toast('Quiz belum tersedia untuk dokumen ini', 'warning'); return; }
+
+    App.currentQuiz = questions;
+    const body = document.getElementById('quiz-body');
+    body.innerHTML = questions.map((q, idx) => `
+      <div class="mb-3 p-3 border rounded">
+        <div class="fw-semibold mb-2">${idx + 1}. ${q.question}</div>
+        ${['a','b','c','d'].map(opt => q['option_' + opt] ? `
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="quiz-q-${q.id}" id="quiz-${q.id}-${opt}" value="${opt.toUpperCase()}">
+            <label class="form-check-label" for="quiz-${q.id}-${opt}">${q['option_' + opt]}</label>
+          </div>` : '').join('')}
+      </div>`).join('');
+    document.getElementById('quiz-result-msg').textContent = '';
+    getModal('docDetailModal').hide();
+    getModal('quizModal').show();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+async function submitQuizAnswers() {
+  const questions = App.currentQuiz || [];
+  const answers = {};
+  let unanswered = 0;
+  questions.forEach(q => {
+    const picked = document.querySelector(`input[name="quiz-q-${q.id}"]:checked`);
+    if (picked) answers[q.id] = picked.value; else unanswered++;
+  });
+  if (unanswered > 0) { toast('Jawab semua soal terlebih dahulu (' + unanswered + ' belum dijawab)', 'warning'); return; }
+
+  showLoader();
+  try {
+    const res = await gasCall('apiSubmitQuizAndAcknowledge', App.currentDocId, answers);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    if (!res.passed) {
+      document.getElementById('quiz-result-msg').innerHTML =
+        `<span class="text-danger fw-semibold">Skor: ${res.score}% — Belum lulus (minimal 80%). Silakan coba lagi.</span>`;
+      toast(res.message, 'warning');
+      return;
+    }
+    toast(res.message, 'success');
+    getModal('quizModal').hide();
+    loadNotificationBadges();
+    loadReadAck();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+// ---- Quiz management (admin/owner) ----
+async function openQuizManageModal(docId) {
+  showLoader();
+  try {
+    const res = await gasCall('apiGetDocumentQuiz', docId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    App.quizEditDocId = docId;
+    App.quizEditData = (res.data || []).map(q => ({...q}));
+    renderQuizManageList();
+    getModal('quizManageModal').show();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+function renderQuizManageList() {
+  const list = document.getElementById('quiz-manage-list');
+  const data = App.quizEditData || [];
+  list.innerHTML = data.map((q, i) => `
+    <div class="border rounded p-3 mb-2" data-qidx="${i}">
+      <div class="d-flex justify-content-between mb-2">
+        <strong>Soal ${i + 1}</strong>
+        <button class="btn btn-sm btn-outline-danger" onclick="removeQuizQuestionRow(${i})"><i class="bi bi-trash"></i></button>
+      </div>
+      <input class="form-control form-control-sm mb-2" placeholder="Pertanyaan" value="${q.question||''}" onchange="updateQuizField(${i},'question',this.value)">
+      <div class="row g-2">
+        ${['a','b','c','d'].map(opt => `
+          <div class="col-6">
+            <input class="form-control form-control-sm" placeholder="Opsi ${opt.toUpperCase()}" value="${q['option_'+opt]||''}" onchange="updateQuizField(${i},'option_${opt}',this.value)">
+          </div>`).join('')}
+      </div>
+      <select class="form-select form-select-sm mt-2" style="max-width:200px" onchange="updateQuizField(${i},'correct_option',this.value)">
+        <option value="">-- Jawaban Benar --</option>
+        ${['A','B','C','D'].map(o => `<option value="${o}" ${q.correct_option===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>`).join('') || '<p class="text-muted">Belum ada soal. Klik "Tambah Soal".</p>';
+}
+
+function addQuizQuestionRow() {
+  App.quizEditData = App.quizEditData || [];
+  App.quizEditData.push({ question:'', option_a:'', option_b:'', option_c:'', option_d:'', correct_option:'' });
+  renderQuizManageList();
+}
+
+function removeQuizQuestionRow(idx) {
+  App.quizEditData.splice(idx, 1);
+  renderQuizManageList();
+}
+
+function updateQuizField(idx, field, value) {
+  App.quizEditData[idx][field] = value;
+}
+
+async function saveQuizQuestions() {
+  showLoader();
+  try {
+    const res = await gasCall('apiSaveDocumentQuiz', App.quizEditDocId, App.quizEditData || []);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast(res.message, 'success');
+    getModal('quizManageModal').hide();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
 async function acknowledgeRead() {
   showLoader();
   try {
@@ -4918,8 +5043,15 @@ async function showDocDetail(docId, showAck) {
       </div>`;
 
     App.currentDocId = docId;
+    const ackData = (showAck && res.data) ? res.data : {};
+    App.currentDocHasQuiz = !!ackData.hasQuiz;
     const ackBtn = document.getElementById('btn-acknowledge');
     ackBtn.style.display = showAck ? 'block' : 'none';
+    ackBtn.innerHTML = App.currentDocHasQuiz
+      ? '<i class="bi bi-patch-question me-1"></i>Mulai Quiz Compliance'
+      : '<i class="bi bi-check2-circle me-1"></i>I Have Read';
+    const manageBtn = document.getElementById('btn-manage-quiz');
+    if (manageBtn) manageBtn.style.display = (!showAck && checkMenuAccess('document_register','edit')) ? 'inline-block' : 'none';
     const pdfBtn = document.getElementById('btn-export-pdf');
     // SUPER_ADMIN tetap bisa export PDF walau status belum Effective (untuk cek hasil export)
     if (pdfBtn) pdfBtn.style.display = (doc.status === 'Effective' || App.user.role === 'SUPER_ADMIN') ? 'inline-block' : 'none';
