@@ -2742,9 +2742,13 @@ function renderQuizManageList() {
       </select>
 
       ${isText ? `
-        <input class="form-control form-control-sm" placeholder="Jawaban benar (kata kunci singkat)"
+        <input class="form-control form-control-sm" placeholder="Jawaban benar, pisahkan alternatif dengan |"
           value="${q.correct_answer_text||''}" onchange="updateQuizField(${i},'correct_answer_text',this.value)">
-        <div class="form-text">Jawaban user akan dicocokkan otomatis (tidak case-sensitive). Gunakan kata kunci singkat, bukan kalimat panjang.</div>
+        <div class="form-text">
+          Bisa isi <strong>beberapa jawaban yang dianggap benar</strong>, pisahkan dengan tanda <code>|</code>.
+          Contoh: <code>FSTL|Factory Site Team Leader|Manager Produksi</code>.
+          Penilaian otomatis: tidak case-sensitive, spasi/tanda baca berlebih diabaikan.
+        </div>
       ` : `
         <div class="row g-2">
           ${['a','b','c','d'].map(opt => `
