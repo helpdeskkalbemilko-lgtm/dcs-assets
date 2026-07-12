@@ -16,7 +16,6 @@ const App = {
   masterType: null,
   masterEditId: null
 };
-
 const DOC_STATUS = {
   DRAFT: 'Draft',
   WAITING_REVIEW: 'Waiting Review',
