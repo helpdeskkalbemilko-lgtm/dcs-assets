@@ -2416,11 +2416,11 @@ async function loadDistributionPage() {
       return;
     }
     
-    const docs = (res.data || []).filter(d => d.status === DOC_STATUS.EFFECTIVE);
+    const docs = (res.data || []).filter(d => d.status === DOC_STATUS.EFFECTIVE || d.status === DOC_STATUS.APPROVED);
     const sel = document.getElementById('dist-doc-select');
     
     if (!docs.length) {
-      sel.innerHTML = '<option value="">Tidak ada dokumen Effective</option>';
+      sel.innerHTML = '<option value="">Tidak ada dokumen Approved/Effective</option>';
     } else {
       sel.innerHTML = '<option value="">-- Pilih Dokumen --</option>' +
         docs.map(d => `<option value="${d.id}">${d.doc_number} - ${d.title}</option>`).join('');
