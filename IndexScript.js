@@ -1097,6 +1097,63 @@ async function renderDocCustomFields(categoryCode, existingValuesJson) {
   wrapper.style.display = '';
 }
 
+async function renderRevCustomFields(categoryCode, existingValuesJson) {
+  const wrapper = document.getElementById('rev-custom-fields-wrapper');
+  const container = document.getElementById('rev-custom-fields-container');
+  container.innerHTML = '';
+  App.richBlocks = {}; // reset state editor blok (richtext/table) setiap dirender ulang
+  if (!categoryCode) { wrapper.style.display = 'none'; return; }
+
+  const cat = (App.data.categories || []).find(c => c.code === categoryCode);
+  if (!cat) { wrapper.style.display = 'none'; return; }
+
+  const res = await gasCall('apiGetCategoryFields', cat.id);
+  const fields = (res && res.data) || [];
+  if (!fields.length) { wrapper.style.display = 'none'; return; }
+
+  let existingValues = {};
+  try { existingValues = existingValuesJson ? JSON.parse(existingValuesJson) : {}; } catch(e) {}
+
+  container.innerHTML = fields.map(f => {
+    const val = existingValues[f.field_key] || '';
+    const req = (f.is_required == 1 || f.is_required === true) ? '*' : '';
+    let inputHtml = '';
+    if (f.field_type === 'textarea') {
+      inputHtml = `<textarea class="form-control" id="cf-${f.field_key}" rows="2">${val}</textarea>`;
+    } else if (f.field_type === 'select') {
+      const opts = (f.options || '').split(',').map(o => o.trim()).filter(Boolean);
+      inputHtml = `<select class="form-select" id="cf-${f.field_key}">
+        <option value="">Select...</option>
+        ${opts.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>`;
+    } else if (f.field_type === 'date') {
+      inputHtml = `<input type="date" class="form-control" id="cf-${f.field_key}" value="${val}">`;
+    } else if (f.field_type === 'number') {
+      inputHtml = `<input type="number" class="form-control" id="cf-${f.field_key}" value="${val}">`;
+    } else if (f.field_type === 'richtext') {
+      inputHtml = renderRichTextEditor_(f.field_key, val);
+    } else if (f.field_type === 'table') {
+      const cols = (f.options || '').split(',').map(o => o.trim()).filter(Boolean);
+      let rows = [];
+      try { rows = val ? JSON.parse(val) : []; } catch(e) { rows = []; }
+      if (!rows.length) rows = [cols.map(() => '')];
+      inputHtml = renderTableFieldEditor_(f.field_key, cols, rows);
+    } else {
+      inputHtml = `<input type="text" class="form-control" id="cf-${f.field_key}" value="${val}">`;
+    }
+    const colClass = (f.field_type === 'richtext' || f.field_type === 'table') ? 'col-12' : 'col-md-4';
+    return `<div class="${colClass}">
+      <label class="form-label">${f.field_label} ${req}</label>
+      ${inputHtml}
+    </div>`;
+  }).join('');
+
+  // Render isi blok RICHTEXT setelah HTML ter-attach ke DOM
+  fields.filter(f => f.field_type === 'richtext').forEach(f => rtRenderBlocks(f.field_key));
+
+  wrapper.style.display = '';
+}
+
 function renderTableFieldEditor_(key, cols, rows) {
   if (!cols.length) return `<div class="alert alert-warning py-2 px-3 mb-0">Kolom tabel belum diatur. Edit field ini di "Kelola Field" dan isi "Kolom Tabel".</div>`;
   const theadHtml = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '<th style="width:36px"></th></tr>';
@@ -2342,6 +2399,8 @@ async function openRevisionModal(docId) {
   revFileQueue = [];
   renderRevFileList();
   document.getElementById('rev-upload-progress').style.display = 'none';
+
+  await renderRevCustomFields(doc.category, doc.custom_fields);   // ← BARU: tampilkan field lama
   
   // Load revision reasons
   try {
@@ -2366,6 +2425,13 @@ async function submitRevision() {
     toast('Alasan revisi dan deskripsi perubahan wajib diisi', 'warning');
     return;
   }
+
+  let customFieldsData = {};
+  const cfInputs = document.querySelectorAll('#rev-custom-fields-container [id^="cf-"]');
+  for (const el of cfInputs) {
+    const key = el.id.replace('cf-', '');
+    customFieldsData[key] = el.value ? el.value.trim() : '';
+  }
   
   const uploadOk = await uploadRevFiles();
     if (!uploadOk) {
@@ -2385,7 +2451,8 @@ async function submitRevision() {
         change_description: desc,
         file_url: fileUrlRaw,
         file_name: JSON.stringify(revFileQueue.filter(q=>q.status==='done').map(q=>q.result.file_name)),
-        file_id:   JSON.stringify(revFileQueue.filter(q=>q.status==='done').map(q=>q.result.file_id))
+        file_id:   JSON.stringify(revFileQueue.filter(q=>q.status==='done').map(q=>q.result.file_id)),
+        custom_fields: customFieldsData
       });
     
     if (res && res.error) {
