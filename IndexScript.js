@@ -402,8 +402,8 @@ function navigate(page) {
   const titleMap = {
     'dashboard': 'Dasbor',
     'doc-register': 'Registrasi Dokumen',
-    'new-document': 'Registrasi Dokumen 2',
-    'new-document-standard': 'Registrasi Dokumen 1',
+    'new-document': 'Dokumen Non Standard',
+    'new-document-standard': 'Dokumen Standard',
     'review': 'Review Dokumen',
     'approval': 'Persetujuan Dokumen',
     'change-request': 'Permintaan Perubahan',
@@ -3420,8 +3420,8 @@ function openMasterModal(type, id) {
       <div class="mb-3"><label class="form-label">Name *</label><input type="text" class="form-control" id="m-name"></div>
       <div class="mb-3"><label class="form-label">Tipe Form *</label>
         <select class="form-select" id="m-form-type">
-          <option value="non_standard">Non-Standar (pakai Registrasi Dokumen 2)</option>
-          <option value="standard">Standar (pakai Registrasi Dokumen 1, field bisa dikustom)</option>
+          <option value="non_standard">Non-Standar (pakai Dokumen Non Standard)</option>
+          <option value="standard">Standar (pakai Dokumen Standard, field bisa dikustom)</option>
         </select>
       </div>
       <div class="mb-3"><label class="form-label">Description</label><textarea class="form-control" id="m-desc" rows="2"></textarea></div>`,
@@ -3641,7 +3641,7 @@ async function deleteMaster(type, id) {
 }
 
 // ============================================================
-// CATEGORY FIELD MANAGER (Field Dinamis untuk Registrasi Dokumen 1)
+// CATEGORY FIELD MANAGER (Field Dinamis untuk Dokumen Standard)
 // ============================================================
 let cfCurrentCategoryId = null;
 
@@ -3915,8 +3915,8 @@ const MENUS = [
   {id:'dashboard',         label:'Dasbor',                 group:'General'},
   {id:'master_data',       label:'Data Master',            group:'Master Data'},
   {id:'document_register', label:'Registrasi Dokumen',     group:'Transaction'},
-  {id:'new_document_standard', label:'Registrasi Dokumen 1', group:'Transaction'},
-  {id:'new_document',      label:'Registrasi Dokumen 2',   group:'Transaction'},
+  {id:'new_document_standard', label:'Dokumen Standard', group:'Transaction'},
+  {id:'new_document',      label:'Dokumen Non Standard',   group:'Transaction'},
   {id:'review',            label:'Review',                 group:'Transaction'},
   {id:'approval',          label:'Persetujuan',            group:'Transaction'},
   {id:'change_request',    label:'Permintaan Perubahan',   group:'Transaction'},
