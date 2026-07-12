@@ -433,7 +433,8 @@ function navigate(page) {
     'admin-login-settings': 'Pengaturan Login',
     'admin-sessions': 'Sesi Aktif',
     'data-import': 'Import Data (Migrasi)',
-    'audit-trail': 'Jejak Audit'
+    'audit-trail': 'Jejak Audit',
+    'recycle-bin': 'Recycle Bin'
 };
   
   document.getElementById('page-title').textContent = titleMap[page] || page;
@@ -488,6 +489,7 @@ function loadPageData(page) {
     case 'admin-sessions': loadActiveSessions(); break;
     case 'data-import': break;
     case 'audit-trail': loadAuditTrail(); break;
+    case 'recycle-bin': loadRecycleBin(); break;
   }
 }
 
@@ -4221,6 +4223,64 @@ async function loadAuditTrail() {
   } catch(e) {} finally { hideLoader(); }
 }
 
+async function loadRecycleBin() {
+  showLoader();
+  try {
+    const res = await gasCall('apiGetTrash');
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    const list = res.data || [];
+    const tbody = document.getElementById('trash-tbody');
+    tbody.innerHTML = list.map(t => `
+      <tr>
+        <td><small class="text-muted">${t.original_sheet}</small></td>
+        <td>${t.entity_label || '-'}</td>
+        <td><small>${t.deleted_by||'-'}</small></td>
+        <td><small>${fmtDateTime(t.deleted_at)}</small></td>
+        <td>
+          <button class="btn btn-sm btn-outline-success" onclick="restoreTrashItem('${t.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="permanentDeleteTrashItem('${t.id}')"><i class="bi bi-trash"></i> Hapus Permanen</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" class="text-center text-muted py-3">Recycle bin kosong</td></tr>';
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+async function restoreTrashItem(trashId) {
+  if (!confirm('Restore data ini ke tempat asalnya?')) return;
+  showLoader();
+  try {
+    const res = await gasCall('apiRestoreFromTrash', trashId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast(res.message, 'success');
+    loadRecycleBin();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+async function permanentDeleteTrashItem(trashId) {
+  if (!confirm('Hapus PERMANEN? Data tidak bisa dikembalikan lagi setelah ini.')) return;
+  showLoader();
+  try {
+    const res = await gasCall('apiPermanentlyDeleteTrash', trashId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast(res.message, 'success');
+    loadRecycleBin();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
+async function emptyAllTrash() {
+  if (!confirm('Kosongkan SELURUH recycle bin secara permanen? Tindakan ini tidak bisa dibatalkan.')) return;
+  showLoader();
+  try {
+    const res = await gasCall('apiEmptyTrash');
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast(res.message, 'success');
+    loadRecycleBin();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
 // ============================================================
 // INIT
 // ============================================================
@@ -4242,6 +4302,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (menuDl) menuDl.style.display = '';
     const menuImport = document.getElementById('menu-data-import');
     if (menuImport) menuImport.style.display = '';
+  }
+  if (['SUPER_ADMIN', 'DOCUMENT_CONTROL_ADMIN'].includes(App.user.role)) {
+    const menuTrash = document.getElementById('menu-recycle-bin');
+    if (menuTrash) menuTrash.style.display = '';
   }
 
   // Sembunyikan semua menu dulu sampai permission selesai dimuat
