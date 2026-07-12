@@ -5366,6 +5366,18 @@ async function loadDocRegister() {
   finally { hideLoader(); }
 }
 
+async function deleteDocumentPermanent(docId) {
+  if (!confirm('Hapus dokumen ini? Dokumen akan dipindahkan ke Recycle Bin dan masih bisa direstore oleh admin.')) return;
+  showLoader();
+  try {
+    const res = await gasCall('apiDeleteDocument', docId);
+    if (res && res.error) { toast(res.error, 'error'); return; }
+    toast('Dokumen berhasil dihapus (masuk Recycle Bin)', 'success');
+    loadDocRegister();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideLoader(); }
+}
+
 function renderDocsTableFull(tbodyId, docs) {
   const emptyHtml = '<i class="bi bi-folder-x d-block fs-2 mb-2"></i>Tidak ada dokumen';
 
@@ -5389,6 +5401,7 @@ function renderDocsTableFull(tbodyId, docs) {
       <button class="btn btn-outline-primary btn-sm" onclick="showDocDetail('${doc.id}')"><i class="bi bi-eye me-1"></i>Detail</button>
       ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canEdit  ?`<button class="btn btn-outline-secondary btn-sm" onclick="openDocModal('${doc.id}')"><i class="bi bi-pencil me-1"></i>Edit</button>`:''}
       ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canEdit  ?`<button class="btn btn-outline-success btn-sm" onclick="submitForReview('${doc.id}')"><i class="bi bi-send me-1"></i>Submit</button>`:''}
+      ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canDelete?`<button class="btn btn-outline-danger btn-sm" onclick="deleteDocumentPermanent('${doc.id}')"><i class="bi bi-trash me-1"></i>Hapus</button>`:''}
       ${s===DOC_STATUS.EFFECTIVE&&canCR                            ?`<button class="btn btn-warning btn-sm" onclick="openChangeRequestModal('${doc.id}')"><i class="bi bi-arrow-left-right me-1"></i>Change Req</button>`:''}
       ${(s===DOC_STATUS.EFFECTIVE||isSuperAdmin)                    ?`<button class="btn btn-outline-danger btn-sm" onclick="exportDocumentPdf('${doc.id}')"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>`:''}
       ${s===DOC_STATUS.CR_APPROVED&&canRevise                      ?`<button class="btn btn-outline-info btn-sm" onclick="openRevisionModal('${doc.id}')"><i class="bi bi-arrow-clockwise me-1"></i>Buat Revisi</button>`:''}
@@ -5425,6 +5438,7 @@ function renderDocsTableFull(tbodyId, docs) {
         <button class="btn btn-outline-primary" onclick="showDocDetail('${doc.id}')"><i class="bi bi-eye"></i></button>
         ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canEdit ?`<button class="btn btn-outline-secondary" onclick="openDocModal('${doc.id}')"><i class="bi bi-pencil"></i></button>`:''}
         ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canEdit ?`<button class="btn btn-outline-success" onclick="submitForReview('${doc.id}')"><i class="bi bi-send"></i></button>`:''}
+        ${(s===DOC_STATUS.DRAFT||s===DOC_STATUS.REJECTED)&&canDelete?`<button class="btn btn-outline-danger" onclick="deleteDocumentPermanent('${doc.id}')"><i class="bi bi-trash"></i></button>`:''}
         ${s===DOC_STATUS.EFFECTIVE&&canCR                           ?`<button class="btn btn-warning" onclick="openChangeRequestModal('${doc.id}')"><i class="bi bi-arrow-left-right"></i></button>`:''}
         ${(s===DOC_STATUS.EFFECTIVE||isSuperAdmin)                   ?`<button class="btn btn-outline-danger" onclick="exportDocumentPdf('${doc.id}')"><i class="bi bi-file-earmark-pdf"></i></button>`:''}
         ${s===DOC_STATUS.CR_APPROVED&&canRevise                     ?`<button class="btn btn-outline-info" onclick="openRevisionModal('${doc.id}')"><i class="bi bi-arrow-clockwise"></i></button>`:''}
