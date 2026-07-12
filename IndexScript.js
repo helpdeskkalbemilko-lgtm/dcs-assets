@@ -4229,24 +4229,45 @@ async function loadRecycleBin() {
     const res = await gasCall('apiGetTrash');
     if (res && res.error) { toast(res.error, 'error'); return; }
     const list = res.data || [];
-    const tbody = document.getElementById('trash-tbody');
-    tbody.innerHTML = list.map(t => `
-      <tr>
-        <td><small class="text-muted">${t.original_sheet}</small></td>
+    const trashRowFn = t => {
+      if (isMobile()) return `
+        <div class="mobile-card">
+          <div class="mobile-card-header">
+            <div><span class="badge bg-secondary" style="font-size:10px">${t.original_sheet}</span>
+              <div class="mobile-card-title mt-1" style="font-size:13px">${t.entity_label || '-'}</div>
+            </div>
+          </div>
+          <div class="mobile-card-meta">
+            <span><i class="bi bi-person"></i>${t.deleted_by||'-'}</span>
+            <span><i class="bi bi-calendar3"></i>${fmtDateTime(t.deleted_at)}</span>
+          </div>
+          <div class="mobile-card-actions">
+            <button class="btn btn-outline-success btn-sm" onclick="restoreTrashItem('${t.id}')"><i class="bi bi-arrow-counterclockwise me-1"></i>Restore</button>
+            <button class="btn btn-outline-danger btn-sm" onclick="permanentDeleteTrashItem('${t.id}')"><i class="bi bi-trash me-1"></i>Hapus Permanen</button>
+          </div>
+        </div>`;
+      return `<tr>
+        <td><span class="badge bg-secondary" style="font-size:10px">${t.original_sheet}</span></td>
         <td>${t.entity_label || '-'}</td>
-        <td><small>${t.deleted_by||'-'}</small></td>
+        <td><small class="text-muted">${t.deleted_by||'-'}</small></td>
         <td><small>${fmtDateTime(t.deleted_at)}</small></td>
-        <td>
-          <button class="btn btn-sm btn-outline-success" onclick="restoreTrashItem('${t.id}')"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
-          <button class="btn btn-sm btn-outline-danger" onclick="permanentDeleteTrashItem('${t.id}')"><i class="bi bi-trash"></i> Hapus Permanen</button>
-        </td>
-      </tr>`).join('') || '<tr><td colspan="5" class="text-center text-muted py-3">Recycle bin kosong</td></tr>';
+        <td><div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-success" onclick="restoreTrashItem('${t.id}')"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button class="btn btn-outline-danger" onclick="permanentDeleteTrashItem('${t.id}')"><i class="bi bi-trash"></i></button>
+        </div></td>
+      </tr>`;
+    };
+    renderListOrCards('tbody-trash', list, trashRowFn, '<i class="bi bi-inbox d-block fs-2 mb-2"></i>Recycle bin kosong', 5);
   } catch(e) { toast('Error: ' + e.message, 'error'); }
   finally { hideLoader(); }
 }
 
 async function restoreTrashItem(trashId) {
-  if (!confirm('Restore data ini ke tempat asalnya?')) return;
+  const okRestore = await showConfirm({
+    title: 'Restore Data', subtitle: 'Data akan dikembalikan ke tempat asalnya',
+    message: 'Yakin ingin me-restore data ini?',
+    okText: 'Restore', cancelText: 'Batal', type: 'primary'});
+  if (!okRestore) return;
   showLoader();
   try {
     const res = await gasCall('apiRestoreFromTrash', trashId);
@@ -4258,7 +4279,11 @@ async function restoreTrashItem(trashId) {
 }
 
 async function permanentDeleteTrashItem(trashId) {
-  if (!confirm('Hapus PERMANEN? Data tidak bisa dikembalikan lagi setelah ini.')) return;
+  const okDel = await showConfirm({
+    title: 'Hapus Permanen', subtitle: 'Data tidak dapat dipulihkan setelah ini',
+    message: 'Yakin ingin menghapus data ini <strong>secara permanen</strong>?',
+    okText: 'Hapus Permanen', cancelText: 'Batal', type: 'danger'});
+  if (!okDel) return;
   showLoader();
   try {
     const res = await gasCall('apiPermanentlyDeleteTrash', trashId);
@@ -4270,7 +4295,11 @@ async function permanentDeleteTrashItem(trashId) {
 }
 
 async function emptyAllTrash() {
-  if (!confirm('Kosongkan SELURUH recycle bin secara permanen? Tindakan ini tidak bisa dibatalkan.')) return;
+  const okEmpty = await showConfirm({
+    title: 'Kosongkan Recycle Bin', subtitle: 'Tindakan ini tidak bisa dibatalkan',
+    message: 'Yakin ingin mengosongkan <strong>SELURUH</strong> recycle bin secara permanen?',
+    okText: 'Kosongkan Semua', cancelText: 'Batal', type: 'danger'});
+  if (!okEmpty) return;
   showLoader();
   try {
     const res = await gasCall('apiEmptyTrash');
@@ -5367,7 +5396,11 @@ async function loadDocRegister() {
 }
 
 async function deleteDocumentPermanent(docId) {
-  if (!confirm('Hapus dokumen ini? Dokumen akan dipindahkan ke Recycle Bin dan masih bisa direstore oleh admin.')) return;
+  const okDel = await showConfirm({
+    title: 'Hapus Dokumen', subtitle: 'Dokumen akan dipindahkan ke Recycle Bin',
+    message: 'Yakin ingin menghapus dokumen ini? Masih bisa direstore oleh admin dari Recycle Bin.',
+    okText: 'Hapus', cancelText: 'Batal', type: 'danger'});
+  if (!okDel) return;
   showLoader();
   try {
     const res = await gasCall('apiDeleteDocument', docId);
